@@ -1,4 +1,5 @@
 
+
 #from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 #from rest_framework.renderers import JSONRenderer
@@ -22,7 +23,10 @@ import datetime
 #appropriate curl command is for POST
 #curl --header "Content-Type: application/json" -d '{"title":"xyz","users":"xyzsdf", "wiki":"weeeee"}' http://127.0.0.1:8000/timeline/
 
+import json
 
+from django.db import connections
+from pymongo import MongoClient
 
 
 def proper_creation_request(data):
@@ -36,6 +40,8 @@ def proper_creation_request(data):
         return False;
     return True
 
+
+
 #{"wiki":"w1", "title":"t1", "author":"a1", "project_id": 3}
 @csrf_exempt
 @api_view(['POST'])
@@ -43,76 +49,55 @@ def create_new_project(request, format=None):
     print "new proj called"
     if request.method == 'POST':
         print str(request.DATA)
+
         if 'project_id' not in request.DATA or not request.DATA['project_id']:
             return Response(status=status.HTTP_400_BAD_REQUEST)
         if not proper_creation_request(request.DATA):
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        post_date = request.DATA['date'].split("-")
-        d = datetime.datetime(month=int(post_date[0]), day=int(post_date[1])+1,year=int(post_date[2])) # 09-20-2014
+        #if project with given project id exists, then throw error.
+        try:
+            k = Timeline.objects.get(project_id=int(request.DATA['project_id']))
+            #if previous line works then not good.
+            return Response("project already exists.", status=status.HTTP_400_BAD_REQUEST)
+        except:
+            #if cant get object by given project id then you are good.
+            pass
 
-        Timeline(project_id=int(request.DATA['project_id']),
+
+        post_date = request.DATA['date'].split("-")
+        d = datetime.datetime(month=int(post_date[0]), day=int(post_date[1]),year=int(post_date[2])) # 09-20-2014
+
+        t = Timeline(project_id=int(request.DATA['project_id']),
                  wiki=request.DATA['wiki'],
                  author=request.DATA['author'],
                  title=request.DATA['title'],
-                 date=d).save()
+                 date=d)
 
+        h = History(wiki=request.DATA['wiki'],
+                 author=request.DATA['author'],
+                 title=request.DATA['title'],
+                 date=d)
+        t.history.append(h)
+        t.save()
+        print "new project succesfully created."
         #serializer = TimelineSerializer(data=request.DATA)
         #if serializer.is_valid():
         #    serializer.save()
-        #TODO: you can make the response value be equal to the input data to match what other methods do.
-        return Response("new project created", status=status.HTTP_201_CREATED)
+
+
+        #turn response into dict so it can be turned into json.
+        #resdate = datetime.fromtimestamp()
+        out = {"project_id":int(t.project_id),
+                             "title": t.title,
+                             "author": t.author,
+                             "date": t.date,
+                             "wiki":t.wiki}
+
+        return Response( out, status=status.HTTP_201_CREATED)
     return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
 
-def get_most_recent_history_by_project_id(id, d):
-    try:
-        t = Timeline.objects.get(project_id=int(id))
-        #print t, "this is the timeline"
-
-        #t = Timeline.objects.all()
-
-        author = ""
-        title=""
-        wiki=""
-        date=""
-        hasauthor=False
-        hastitle=False
-        haswiki=False
-        hasdate=False
-
-        #for i in t.history:
-        #    print i.date
-
-        #sort by date
-        hist = sorted(t.history, key=lambda history: history.date, reverse=True)
-        #for i in hist:
-            #print i.date
-        for i in hist:
-            print i.wiki
-        for h in hist:
-            #print h.date,d,'this is it'
-            print "historical date:",h.date,"input date:", d
-            if h.date <= d and (not hasauthor or not hasdate or not hastitle or not haswiki):
-                if not hasauthor and h.author is not "" and h.author != None and h.author is not None:
-                    author = h.author
-                    hasauthor = True
-                if not hastitle and h.title is not "" and h.title != None and h.title is not None:
-                    title = h.title
-                    hastitle = True
-                if not haswiki and h.wiki is not "" and h.wiki != None and h.wiki is not None:
-                    wiki = h.wiki
-                    haswiki=True
-                if not hasdate and h.date is not "" and h.date != None and h.date is not None:
-                    date = h.date
-                    hasdate = True
-                print wiki
-            else:
-                break
-        most_recent_hist = History(title=title, author=author, wiki=wiki, date=date)
-        return most_recent_hist
-    except:
-        return None
 
 @csrf_exempt
 @api_view(['GET'])
@@ -122,14 +107,70 @@ def project_detail(request, format=None):
         if 'project_id' not in request.GET or not request.GET['project_id']:
             return Response(status=status.HTTP_400_BAD_REQUEST)
         if 'date' in request.GET and request.GET['date']:
-
+            #print request.GET['project_id'], request.GET['date']
             url_date = request.GET['date'].split("-")
-            d = datetime.datetime(month=int(url_date[0]), day=int(url_date[1])+1,year=int(url_date[2])) # 09-20-2014
-            h= get_most_recent_history_by_project_id(request.GET['project_id'],d)
+            d = datetime.datetime(month=int(url_date[0]), day=int(url_date[1]),year=int(url_date[2])) # 09-20-2014
+#########################POTENTIALLY ADD day+1 HERE since you want to get data back from anytime on input date as well. THUS should start checking from one day after input day.
+            try:
+                t = Timeline.objects.get(project_id=int(request.GET['project_id']))
 
-            print h.wiki, h.title, h.author,h.date
+                #actual values of the historical object
+                author = ""
+                title=""
+                wiki=""
 
-            return Response((request.GET['project_id'],h.author, h.title, h.wiki, h.date) , status = status.HTTP_200_OK)
+                #have the values of the historical object been set?
+                hasauthor=False
+                hastitle=False
+                haswiki=False
+
+
+                #for i in t.history:
+                #    print i.date
+
+                #sort by date (note that date in this case is actually in ms so its all good :) )
+                hist = sorted(t.history, key=lambda history: history.date, reverse=True)
+
+                #for i in hist:
+                #    print i.title, i.title=="", i.title==None, i.title is not None
+                #for i in hist:
+                #    print i.wiki
+                print "#################################################################"
+                for h in hist:
+                    #print h.date,d,'this is it'
+                    #print "historical date:",h.date,"input date:", d
+
+                    print h.date,"should be less than", d
+                    if h.date <= d:
+
+                        if not hasauthor or not hastitle or not haswiki:
+                            if not hasauthor and not is_empty(h.author):
+                                author = h.author
+                                print "author:",author
+                                hasauthor = True
+                            if not hastitle and not is_empty(h.title):
+                                title = h.title
+                                print "title:",title, "is_empty(h.title) returned true in this case"
+                                hastitle = True
+                            if not haswiki and not is_empty(h.wiki):
+                                wiki = h.wiki
+                                print "wiki:",wiki
+                                haswiki=True
+
+                        else:
+                            break
+                #print title, author, wiki
+                most_recent_hist = History(title=title, author=author, wiki=wiki)
+                print "#################################################################"
+
+            except:
+                return Response("failed to create proper historical object", status=status.HTTP_400_BAD_REQUEST)
+
+            out  = {"project_id":int(request.GET['project_id']),
+                             "title": title,
+                             "author": author,
+                             "wiki":wiki}
+            return Response(out , status = status.HTTP_200_OK)
             #return Response("No results attained.",status=status.HTTP_204_NO_CONTENT)
 
 
@@ -137,12 +178,27 @@ def project_detail(request, format=None):
             t = Timeline.objects.get(project_id= int(request.GET['project_id']) )
 
 
-            return Response((t.project_id, t.author, t.title, t.wiki, t.date) , status=status.HTTP_200_OK)
+
+            out = {"project_id":int(t.project_id),
+                             "title": t.title,
+                             "author": t.author,
+                             "date":t.date,
+                             "wiki":t.wiki}
+
+            return Response(out , status=status.HTTP_200_OK)
         except:
             return Response("No results attained.", status=status.HTTP_204_NO_CONTENT)
     return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
+def is_empty(x):
+    if x is None:
+        return True
+    if x==None:
+        return True
+    if x=="":
+        return True
+    return False
 
 
 
@@ -156,60 +212,108 @@ def update_project(request):
         if 'date' not in request.DATA or not request.DATA['date']: #written yyyy-dd-mm
             return Response("must add date for when this historical value was added", status=status.HTTP_400_BAD_REQUEST)
         try:
-            t = Timeline.objects.get(project_id=int(request.DATA['project_id']))
-            #hist = sorted(t.history, key=lambda history: history.date, reverse=True)
+            print 1
+            url_date = request.DATA['date'].split("-")
+            d = datetime.datetime(month=int(url_date[0]), day=int(url_date[1]),year=int(url_date[2])) # 09-20-2014
 
-            hist=get_most_recent_history_by_project_id(request.GET['project_id'])
-            print hist,t,"supposed to be here"
+            t = Timeline.objects.get(project_id=int(request.DATA['project_id']))
+            print 2
+            #hist = get_most_recent_history_by_project_id(request.DATA['project_id'], datetime.datetime(month=12, day=30, year=9999))
+
             #determine all differences between current version and old version
 
-            wikichanged=False
-            titlechanged=False
-            authorchanged=False
+
             #determine where differences are. Also, update current values for each.
 
-            print hist[-1].title,hist[-1].wiki,hist[-1].author
-
-            if hist[-1].wiki is not request.DATA['wiki']:
-                wikichanged=True
+            #old values of things moved into this history object. ONLY do so if value changed(in request.DATA and is diff than old.).
+            oldVals = History()
+            oldVals.date = d
+            t.date = d
+            #print hist.title,hist.wiki,hist.author,"<-shuold be title, w, author"
+            #print hist.wiki is request.DATA['wiki']
+            print "old values \n new value"
+            print "------------------------------"
+            if 'wiki' in request.DATA and t.wiki is not request.DATA['wiki']:
+                print t.wiki
+                oldVals.wiki = request.DATA['wiki']
                 t.wiki = request.DATA['wiki']
-            if hist[-1].title is not request.DATA['title']:
-                titlechanged=True
+                print t.wiki
+            if 'title' in request.DATA and t.title is not request.DATA['title']:
+                print t.title
+                oldVals.title = request.DATA['title']
                 t.title = request.DATA['title']
-            if hist[-1].author is not request.DATA['author']:
-                authorchanged=True
+                print t.title
+            if 'author' in request.DATA and t.author is not request.DATA['author']:
+                print t.author
+                oldVals.author = request.DATA['author']
                 t.author = request.DATA['author']
-            print wikichanged, titlechanged, authorchanged
+                print t.author
+            print "------------------------------"
 
-            #move all differences into history
-            if wikichanged or titlechanged or authorchanged:
-                oldVals = History()
-                if wikichanged:
-                    oldVals.wiki=request.DATA['wiki']
-                if titlechanged:
-                    oldVals.title=request.DATA['title']
-                if authorchanged:
-                    oldVals.author=request.DATA['author']
 
-                url_date = request.DATA['date'].split("-")
-                d = datetime.datetime(month=int(url_date[0]), day=int(url_date[1])+1,year=int(url_date[2])) # 09-20-2014
-                oldVals.date = d
-                #actually add historical values into history list in timeline
-                t.history.append(oldVals)
 
-                #save all changes to timeline object.
-                t.save()
+            print oldVals
+            #actually add historical values into history list in timeline
+            t.history.append(oldVals)
+            #save all changes to timeline object.
+            t.save()
 
 
         #serializer = TimelineSerializer(data=request.DATA)
         #if serializer.is_valid():
         #    serializer.save()
-            return Response((t.project_id, t.author, t.title, t.wiki, t.date), status=status.HTTP_206_PARTIAL_CONTENT)
+
+            out  = {"project_id":int(t.project_id),
+                             "title": t.title,
+                             "author": t.author,
+                             "date":t.date,
+                             "wiki":t.wiki}
+            return Response(out, status=status.HTTP_206_PARTIAL_CONTENT)
         except:
             return Response("failed.", status=status.HTTP_400_BAD_REQUEST)
 
     return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
-#steps to using this are:
-# curl
+
+#>>> from pymongo import MongoClient
+#>>> c = MongoClient()
+#>>> c.test_database
+#Database(MongoClient('localhost', 27017), u'test_database')
+#>>> c['test-database']
+#Database(MongoClient('localhost', 27017), u'test-database')
+
+
+#NOTE: can only delete one at a time using this method. :(
+@api_view(['DELETE'])
+def delete_project(request):
+    if request.method=="DELETE":
+        print '"delete project called'
+        try:
+            print "hi",str(request.DATA)
+            #c = MongoClient()
+            #c.my_database['']
+
+            database_wrapper = MongoClient()['my_database']
+
+            collection = database_wrapper.osf_timeline
+
+            id= int(request.DATA['project_id'])
+            collection.find_and_modify(query={'project_id':id}, remove=True)
+            return Response("deleted project_id="+str(id),status.HTTP_200_OK )
+        except:
+            Response("failed to delete project_id "+str(request.DATA['project_id']), status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+def delete_all_projects(request):
+    if request.method=="DELETE":
+        print '"delete project called'
+        try:
+
+            database_wrapper = MongoClient()['my_database']
+            collection = database_wrapper.osf_timeline
+            collection.remove({})
+            return Response("all projects deleted.",status.HTTP_200_OK )
+        except:
+            Response("failed to delete all projects ", status=status.HTTP_400_BAD_REQUEST)
