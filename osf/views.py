@@ -13,7 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny,IsAdminUser
 
-from osf.models import Timeline,History
+from osf.models import Timeline,History, DatabaseHandler
 #this is for working with custom queries from django to postgres
 from django.db import connection
 
@@ -54,9 +54,12 @@ def create_new_project(request, format=None):
             return Response(status=status.HTTP_400_BAD_REQUEST)
         if not proper_creation_request(request.DATA):
             return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        pid = int(request.DATA['project_id'])
+
         #if project with given project id exists, then throw error.
         try:
-            k = Timeline.objects.get(project_id=int(request.DATA['project_id']))
+            k = Timeline.objects.get(project_id=pid)
             #if previous line works then not good.
             return Response("project already exists.", status=status.HTTP_400_BAD_REQUEST)
         except:
@@ -67,7 +70,7 @@ def create_new_project(request, format=None):
         post_date = request.DATA['date'].split("-")
         d = datetime.datetime(month=int(post_date[0]), day=int(post_date[1]),year=int(post_date[2])) # 09-20-2014
 
-        t = Timeline(project_id=int(request.DATA['project_id']),
+        t = Timeline(project_id=pid,
                  wiki=request.DATA['wiki'],
                  author=request.DATA['author'],
                  title=request.DATA['title'],
@@ -80,19 +83,12 @@ def create_new_project(request, format=None):
         t.history.append(h)
         t.save()
         print "new project succesfully created."
-        #serializer = TimelineSerializer(data=request.DATA)
-        #if serializer.is_valid():
-        #    serializer.save()
 
 
-        #turn response into dict so it can be turned into json.
-        #resdate = datetime.fromtimestamp()
-        out = {"project_id":int(t.project_id),
-                             "title": t.title,
-                             "author": t.author,
-                             "date": t.date,
-                             "wiki":t.wiki}
 
+
+
+        out = {pid: "Project Created."}
         return Response( out, status=status.HTTP_201_CREATED)
     return Response(status=status.HTTP_400_BAD_REQUEST)
 
@@ -103,7 +99,7 @@ def create_new_project(request, format=None):
 @api_view(['GET'])
 def project_detail(request, format=None):
     print "get called"
-    if request.method=="GET":
+    if request.method == "GET":
         if 'project_id' not in request.GET or not request.GET['project_id']:
             return Response(status=status.HTTP_400_BAD_REQUEST)
         if 'date' in request.GET and request.GET['date']:
@@ -182,7 +178,6 @@ def project_detail(request, format=None):
             out = {"project_id":int(t.project_id),
                              "title": t.title,
                              "author": t.author,
-                             "date":t.date,
                              "wiki":t.wiki}
 
             return Response(out , status=status.HTTP_200_OK)
@@ -263,11 +258,12 @@ def update_project(request):
         #if serializer.is_valid():
         #    serializer.save()
 
-            out  = {"project_id":int(t.project_id),
-                             "title": t.title,
-                             "author": t.author,
-                             "date":t.date,
-                             "wiki":t.wiki}
+            #out  = {"project_id":int(t.project_id),
+            #                 "title": t.title,
+            #                 "author": t.author,
+            #                 "date":t.date,
+            #                 "wiki":t.wiki}
+            out = {int(t.project_id): "Project Updated."}
             return Response(out, status=status.HTTP_206_PARTIAL_CONTENT)
         except:
             return Response("failed.", status=status.HTTP_400_BAD_REQUEST)
@@ -290,7 +286,7 @@ def delete_project(request):
     if request.method=="DELETE":
         print '"delete project called'
         try:
-            print "hi",str(request.DATA)
+            #print "hi",str(request.DATA)
             #c = MongoClient()
             #c.my_database['']
 
@@ -298,8 +294,7 @@ def delete_project(request):
 
             collection = database_wrapper.osf_timeline
 
-            id= int(request.DATA['project_id'])
-            collection.find_and_modify(query={'project_id':id}, remove=True)
+            collection.find_and_modify(query={'project_id':id}, )
             return Response("deleted project_id="+str(id),status.HTTP_200_OK )
         except:
             Response("failed to delete project_id "+str(request.DATA['project_id']), status=status.HTTP_400_BAD_REQUEST)

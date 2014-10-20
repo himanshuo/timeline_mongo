@@ -22,6 +22,23 @@ class Timeline(models.Model):
     objects = MongoDBManager()
 
 
+#BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO!!!! this sucks. the latency between server and client too slow to allow for simple
+# useful return data (increase max_project_id by 1).
+#if you were to concurrently have multiple created project request, then you would have to put them in queue so that
+#the next generated project_id doesnt clash with the next generated project_id of a different request.
+#simple solution for current purposes is to just have client input what project id they want.
+
+#this could be handled using Map/Reduce but thats unneccessrily slow.
+## we could also index project_id and perhaps sort like that, but again, thats going to be a lot slower than just having
+# a "database handler" collection whose entire purpose is to handle data about our Timeline and History collections.
+
+#going to just be one instance. will store metadata about db. thus will allow constant time for attaining some data about
+#collections
+#class DatabaseHandler(models.Model):
+#    max_project_id = models.IntegerField(default=0)#start with project_id=0
+#    objects = MongoDBManager()
+
+
 class History(models.Model):
     title = models.CharField(max_length=256, blank=True,default='')
     author = models.CharField(max_length=256, blank=True, default='')
@@ -30,7 +47,7 @@ class History(models.Model):
     #date = models.DateTimeField(auto_now_add=True)
     date = models.DateTimeField()
     class MongoMeta:
-        ordering = ['date']
+        ordering = ['-date']
 
 
     #can use raw_update to create your specific updates in the future for when you add in a new timeline, and the current

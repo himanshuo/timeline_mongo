@@ -24,24 +24,36 @@ def create_project(project_id, date, title, wiki, author, port):
     payload = {'project_id': project_id, 'date': date,'title':title, 'wiki':wiki, 'author':author}
     payload = urllib.urlencode(payload) # date=09-20-2014&wiki=w1&project_id=3&author=a1&title=t1   ???correct????
 
-    print payload
+    #print payload
     data = {'csrfmiddlewaretoken':'QX4YKZLbWnYH6RGBdcEqe6CezwHlLej1',
             '_content_type':'application/x-www-form-urlencoded',
             '_content': payload}#after application, not sure if %2F or /
     r = requests.post('http://localhost:'+str(port)+'/create_new_project/', data=data)
     #returns a list? can you turn it into json?
+    print r.status_code
+    ret=r.json()
+    if ret[str(project_id)] == "Project Created." and r.status_code < 300:
+        ret[project_id] = "Project Created."
+        del ret[str(project_id)]
+        return ret
+    return ret
 
-    return r.json()
 
 def get_project(project_id,port, date=None, ):
     if date is None:
         payload = {'project_id': project_id}
         r = requests.get('http://localhost:'+str(port)+'/project_detail/', params=payload)
-        return r.json()
+        if r.status_code<300:
+            return r.json()
+        else:
+            return {project_id:"status code was not 2xx"}
     else:
         payload = {'project_id': project_id, 'date': date}
         r = requests.get('http://localhost:'+str(port)+'/project_detail/', params=payload)
-        return r.json()
+        if r.status_code<300:
+            return r.json()
+        else:
+            return {project_id:"status code was not 2xx"}
 
 
 
@@ -61,12 +73,17 @@ def update_project(project_id, date, port, title=None, wiki=None, author=None):
 
     payload = urllib.urlencode(payload) # date=09-20-2014&wiki=w1&project_id=3&author=a1&title=t1   ???correct????
 
-    print payload
+    #print payload
     data = {'csrfmiddlewaretoken':'QX4YKZLbWnYH6RGBdcEqe6CezwHlLej1',
             '_content_type':'application/x-www-form-urlencoded',
             '_content': payload}#after application, not sure if %2F or /
     r = requests.post('http://localhost:'+str(port)+'/update_project/', data=data)
-    return r.json()
+    ret= r.json()
+    if ret[str(project_id)] == "Project Updated." and r.status_code < 300:
+        ret[project_id] = "Project Updated."
+        del ret[str(project_id)]
+        return ret
+    return ret
 
 
 def delete_project(project_id, port):
@@ -97,93 +114,201 @@ def convert_utc_format(month, day, year):
     return year+"-"+month+"-"+day+"T"+"00:00:00"
 
 
-class TestTimeline(TestCase):
-    def setUp(self):
-        d=convert_utc_format("09", "20","2014")
+class TestTimeline():
+    def __init__(self):
+        #d=convert_utc_format("09", "20","2014")
         self.original = {"title": 't1',
                              "author": 'a1',
-                             "date": str(d),
+                             #"date": str(d),
                              "wiki":'w1'}
-    #def tearDown(self):
-        #determine how to delete.
-        #Timeline.objects.raw_update()
-    #    pass
+        self.ports = [8000,9000]
+        #8000 is mongo
+        #9000 is postgres
+        #2424 is hybrid
+
+    def works(self, should_be, actually_is, test_name):
+        if should_be != actually_is:
+            print test_name,"failed. It should have been:" ,should_be,"but was:",actually_is
+            return False
+        return True
 
     def test_simple(self):
-        original = self.original
+        for p in self.ports:
 
-        original['project_id'] = 3000
-        old = original.copy()
 
-        x= create_project(3000,'09-20-2014', 't1','w1','a1', port=8000)
-        self.assertEqual(x, original)
-
-        nextday=convert_utc_format("09","21","2014")
-        original['title']='t2'
-        original['date']=nextday
-
-        self.assertEqual(update_project(3000, date="09-21-2014", title= "t2", port=8000),original )
-
-        self.assertEqual(get_project(3000, port=8000), original)
-        del old["date"]
-        self.assertEqual(get_project(3000,date="09-20-2014", port=8000),old)
-        delete_all_projects(8000)
-
-    """
-    def test_simple_thousand(self):
-
-        list_of_times = []
-        for i in range(1,1000):
-            #clean
+            original = self.original
             t1 = time.time()
-            original = self.original.copy()
-
-            original['project_id'] = i
+            original['project_id'] = 3000
             old = original.copy()
 
-            x= create_project(i,'09-20-2014', 't1','w1','a1', port=8000)
-            self.assertEqual(x, original)
+            x= create_project(3000,'09-20-2014', 't1','w1','a1', port=p)
 
+            if not self.works(test_name="test_simple", should_be={3000:"Project Created."}, actually_is=x):
+                return
             nextday=convert_utc_format("09","21","2014")
             original['title']='t2'
-            original['date']=nextday
+            #original['date']=nextday
 
-            self.assertEqual(update_project(i, date="09-21-2014", title="t2", port=8000),original )
+            y= update_project(3000, date="09-21-2014", title= "t2", port=p)
 
-            self.assertEqual(get_project(i, port=8000), original)
-            del old["date"]
-            self.assertEqual(get_project(i,date="09-20-2014", port=8000),old)
-            t2 = time.time()
-            list_of_times.append(t2-t1)
-        print float(sum(list_of_times))/1000.0
-        self.assertTrue(float(sum(list_of_times))/1000.0 < 0.5)
-        delete_all_projects(8000)
-    """
+            if not self.works(test_name="test_simple", should_be={3000: "Project Updated."}, actually_is=y):
+                return
+            z = get_project(3000, port=p)
 
 
-    def test_thousand_updates(self):
-        original = self.original.copy()
-        original['project_id'] = 1
-        old = original.copy()
-        x = create_project(1,'09-20-2014', 't1','w1','a1', port=8000)
-        self.assertEqual(x, original)
+            if not self.works(test_name="test_simple", should_be=original, actually_is=z):
+                return
 
-        list_of_times = []
-        for i in range(2,10):
-            t1 = time.time()
-            nextyear=convert_utc_format("09","21",str(2014+i))
-            original['title'] = 't'+str(i)
-            original['date']= nextyear
+            q = get_project(3000,date="09-20-2014", port=p)
 
-            self.assertEqual(update_project(1, date=nextyear, title='t'+str(i), port=8000),original)
-
-            self.assertEqual(get_project(1, port=8000), original)
+            if not self.works(test_name="test_simple", should_be=old, actually_is=q):
+                return
 
             t2 = time.time()
-            list_of_times.append(t2-t1)
-        print float(sum(list_of_times))/10.0
-        self.assertTrue(float(sum(list_of_times))/10.0 < 0.1)
+            delete_all_projects(p)
+            print "Port",p,": Went through all steps once for one project in",t2-t1,"seconds"
+
+
+    def test_simple_x_times(self, num_times):
+        for p in self.ports:
+            list_of_times = []
+            test_passed = True
+            for i in range(1,num_times):
+                #clean
+                t1 = time.time()
+                original = self.original.copy()
+
+                original['project_id'] = i
+                old = original.copy()
+
+                x= create_project(i,'09-20-2014', 't1','w1','a1', port=p)
+                test_passed =  x == original
+                if not test_passed:
+                    print "test_simple_x_times failed", x, "!=", original
+                    return
+
+                nextday=convert_utc_format("09","21","2014")
+                original['title']='t2'
+                original['date']=nextday
+
+                y = update_project(i, date="09-21-2014", title="t2", port=p)
+                test_passed = y ==original
+                if not test_passed:
+                    print "test_simple_x_times failed", y, "!=", original
+                    return
+
+                z = get_project(i, port=p)
+                test_passed = z ==original
+                if not test_passed:
+                    print "test_simple_x_times failed", z, "!=", original
+                    return
+
+                del old["date"]
+
+                q = get_project(i,date="09-20-2014", port=p)
+                test_passed = q==old
+                if not test_passed:
+                    print "test_simple_x_times failed", q, "!=", original
+                    return
+
+                t2 = time.time()
+                list_of_times.append(t2-t1)
+            print "Port",p, ": Ran",num_times,"project iterations in average of ", float(sum(list_of_times))/float(num_times),"seconds"
+
+            delete_all_projects(p)
+
+
+
+    def test_x_updates(self, num_times):
+
+        for p in self.ports:
+            test_passed = True
+            original = self.original.copy()
+            original['project_id'] = 1
+            old = original.copy()
+            x = create_project(1,'09-20-2014', 't1','w1','a1', port=p)
+            test_passed = x== original
+            if not test_passed:
+                print "test_thousand_updates failed.", x ,"!=",original
+                return
+
+            list_of_times = []
+            for i in range(2,num_times+2):
+                t1 = time.time()
+                nextyear=convert_utc_format("09","21",str(2014+i))
+                original['title'] = 't'+str(i)
+                original['date']= nextyear
+
+                y = update_project(1, date="09-21-"+str(2014+i), title='t'+str(i), port=p)
+                test_passed =  y==original
+                if not test_passed:
+                    print "test_thousand_updates failed.", y ,"!=",original
+                    return
+
+                q = get_project(1, port=p)
+                test_passed =  q==original
+                if not test_passed:
+                    print "test_thousand_updates failed.", q ,"!=",original
+                    return
+                t2 = time.time()
+                list_of_times.append(t2-t1)
+            print "ran", num_times ,"updates on single project in average of ",float(sum(list_of_times))/float(num_times),"seconds"
+            delete_all_projects(p)
+
+
+
+
+def show_options(options):
+    for i in range(0,len(options)):
+        print i,"-", options[i]
+    return ""
+
+
+
+
+if __name__=="__main__":
+    while True:
         delete_all_projects(8000)
+        print "Input Test Option (each option tests all three set ups):"
+        options={}
+        options[0]="Exit"
+        options[1]="simple all steps"
+        options[2] ="thousand all steps"
+        options[3] ="thousand create project"
+        options[4] ="thousand update randomly"
+        options[5] ="thousand update and view project randomly"
+        options[6] ="view single project with update spread 10,000 histories apart"
+        options[7] ="million all steps"
+        options[8] ="million create project"
+        options[9] ="million update randomly"
+        options[10] ="million update and view project randomly"
+        options[11] ="view single project with update spread million histories apart"
+
+        test = TestTimeline()
+
+
+        def case1():
+            test.test_simple()
+        def case2():
+            test.test_simple_x_times(1000)
+        def case4():
+            test.test_x_updates(1000)
+
+        cases = {
+            1: case1,
+            2: case2,
+            4: case4
+        }
+        option = int(input(show_options(options)))
+
+        if option==0:
+            break
+        else:
+            cases[option]()
+
+
+
+
 
 
 #things to test:
