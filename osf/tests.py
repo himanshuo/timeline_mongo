@@ -43,6 +43,7 @@ def get_project(project_id,port, date=None, ):
     if date is None:
         payload = {'project_id': project_id}
         r = requests.get('http://localhost:'+str(port)+'/project_detail/', params=payload)
+        print r.status_code
         if r.status_code<300:
             return r.json()
         else:
@@ -258,53 +259,12 @@ class TestTimeline():
 
 
 
-def show_options(options):
-    for i in range(0,len(options)):
-        print i,"-", options[i]
-    return ""
-
-
-
 
 if __name__=="__main__":
-    while True:
-        delete_all_projects(8000)
-        print "Input Test Option (each option tests all three set ups):"
-        options={}
-        options[0]="Exit"
-        options[1]="simple all steps"
-        options[2] ="thousand all steps"
-        options[3] ="thousand create project"
-        options[4] ="thousand update randomly"
-        options[5] ="thousand update and view project randomly"
-        options[6] ="view single project with update spread 10,000 histories apart"
-        options[7] ="million all steps"
-        options[8] ="million create project"
-        options[9] ="million update randomly"
-        options[10] ="million update and view project randomly"
-        options[11] ="view single project with update spread million histories apart"
+    create_project(project_id=1, date="09-20-2014", title="t1", wiki="w1", author="a1", port=8000)
+    for i in range(2,100):
+        update_project(project_id=1, date="09-20-"+str(2014+i), title="t"+str(1+i), port=8000)
 
-        test = TestTimeline()
-
-
-        def case1():
-            test.test_simple()
-        def case2():
-            test.test_simple_x_times(1000)
-        def case4():
-            test.test_x_updates(1000)
-
-        cases = {
-            1: case1,
-            2: case2,
-            4: case4
-        }
-        option = int(input(show_options(options)))
-
-        if option==0:
-            break
-        else:
-            cases[option]()
 
 
 
