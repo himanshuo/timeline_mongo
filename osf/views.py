@@ -254,7 +254,7 @@ def update_project(request):
 
 
              #if number of histories divisible by 10 then make new history include all latest updates from previous 10
-            if len(t.history) % 10==0:
+            if len(t.history) % 20==0:
                 print "history has length:",len(t.history)
                 hist = sorted(t.history, key=lambda history: history.date, reverse=True)
 

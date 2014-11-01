@@ -46,8 +46,8 @@ class History(models.Model):
     #version = models.IntegerField()
     #date = models.DateTimeField(auto_now_add=True)
     date = models.DateTimeField()
-    class MongoMeta:
-        ordering = ['-date']
+    #class MongoMeta:
+    #    ordering = ['-date']
 
 
     #can use raw_update to create your specific updates in the future for when you add in a new timeline, and the current
